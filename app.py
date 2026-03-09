@@ -1,7 +1,6 @@
-﻿import streamlit as st
+import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
 
 
 # --- 1. GENERATE MOCK DATA ---
@@ -31,16 +30,16 @@ def generate_data():
     return df
 
 
-# --- 2. TRAIN THE AI (FRAUD / INTENT FILTER) ---
-@st.cache_resource
-def train_model(df):
-    features = ["Historical_Login_Prob", "Temp_C", "Rain_mm", "AQI"]
-    X = df[features]
-    y = df["Did_Login"]
-
-    model = RandomForestClassifier(n_estimators=50, random_state=42)
-    model.fit(X, y)
-    return model
+# --- 2. LIGHTWEIGHT AI SCORE (FRAUD / INTENT FILTER) ---
+def score_intent_probability(hist_prob, temp, rain, aqi):
+    # Weighted heuristic that approximates likelihood of genuine work intent.
+    score = (
+        0.60 * hist_prob
+        + 0.20 * max(0, (45 - temp) / 15)
+        + 0.12 * max(0, (60 - rain) / 60)
+        + 0.08 * max(0, (500 - aqi) / 500)
+    )
+    return float(np.clip(score, 0.0, 1.0))
 
 
 # --- 3. PARAMETRIC ENGINE (RULES) ---
@@ -87,9 +86,8 @@ income protection against these uncontrollable events and bear the full financia
 """
 )
 
-# Load data and model.
+# Load data.
 df = generate_data()
-model = train_model(df)
 
 # Sidebar inputs.
 st.sidebar.header("Weekly Plan and Event Simulation")
@@ -140,16 +138,7 @@ with col2:
     if not coverage_active:
         st.info("Coverage is inactive. Claims are skipped until weekly premium is paid.")
     elif payout_amount > 0:
-        prediction_input = pd.DataFrame(
-            {
-                "Historical_Login_Prob": [worker_hist_prob],
-                "Temp_C": [today_temp],
-                "Rain_mm": [today_rain],
-                "AQI": [today_aqi],
-            }
-        )
-
-        intent_prob = model.predict_proba(prediction_input)[0][1]
+        intent_prob = score_intent_probability(worker_hist_prob, today_temp, today_rain, today_aqi)
         fraud_risk = 1 - intent_prob
         st.metric("AI Intent Probability", f"{intent_prob * 100:.1f}%")
         st.metric("Fraud Risk Score", f"{fraud_risk * 100:.1f}%")
